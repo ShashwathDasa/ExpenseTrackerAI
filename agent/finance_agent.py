@@ -11,6 +11,7 @@ class FinanceAgent:
     def __init__(self, session):
         self.session = session
         self.client = Groq(api_key=Config.GROQ_API_KEY)
+        self.model = "openai/gpt-oss-120b"
 
     def respond(self, user_message):
         messages = [
@@ -33,7 +34,7 @@ class FinanceAgent:
         ]
 
         response = self.client.chat.completions.create(
-            model="openai/gpt-oss-120b",
+            model=self.model,
             messages=messages,
             tools=get_tool_definitions(),
             tool_choice="auto",
@@ -47,18 +48,7 @@ class FinanceAgent:
         for tool_call in message.tool_calls:
             tool_name = tool_call.function.name
             arguments = json.loads(tool_call.function.arguments)
-
-            print("TOOL:", tool_name)
-            print("ARGUMENTS:", arguments)
-
-            result = call_tool(
-                tool_name,
-                self.session,
-                arguments,
-            )
-
-            print("RESULT:", result)
-
+            result = call_tool(tool_name, self.session, arguments)
             messages.append(
                 {
                     "role": "tool",
@@ -67,5 +57,5 @@ class FinanceAgent:
                     "content": json.dumps(result),
                 }
             )
-        final_response = self.client.chat.completions.create(model="openai/gpt-oss-120b", messages=messages)
+        final_response = self.client.chat.completions.create(model=self.model, messages=messages)
         return final_response.choices[0].message.content
