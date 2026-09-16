@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import inspect
 import re
-from typing import get_args, get_origin, get_type_hints
+from types import UnionType
+from typing import Union, get_args, get_origin, get_type_hints
+
 
 _TOOL_REGISTRY: dict[str, dict] = {}
+
 
 _PYTHON_TO_JSON_TYPE = {
     str: "string",
@@ -14,82 +17,155 @@ _PYTHON_TO_JSON_TYPE = {
     dict: "object",
 }
 
-_FIELD_RE = re.compile(r"^:(\w+)(?:\s+(\w+))?:\s*(.*)$")
+
+_FIELD_RE = re.compile(
+    r"^:(\w+)(?:\s+(\w+))?:\s*(.*)$"
+)
 
 
-def _parse_docstring(doc: str | None) -> tuple[str, dict[str, str]]:
-    """Split a reST-style docstring into (summary, {param_name: description})."""
+def _parse_docstring(
+    doc: str | None,
+) -> tuple[str, dict[str, str]]:
+    """
+    Parse a tool docstring.
+
+    Returns:
+        summary: The main description of the tool.
+        parameter_descriptions: Mapping of parameter name to description.
+    """
+
     if not doc:
         return "", {}
-    lines = inspect.cleandoc(doc).splitlines()
-    i = 0
-    while i < len(lines) and not lines[i].lstrip().startswith(":"):
-        i += 1
-    summary = "\n".join(lines[:i]).strip()
-    param_descriptions: dict[str, str] = {}
-    current_param = None
-    for line in lines[i:]:
-        stripped = line.strip()
-        if not stripped:
-            continue
 
-        match = _FIELD_RE.match(stripped)
+    lines = [
+        line.strip()
+        for line in inspect.cleandoc(doc).splitlines()
+    ]
+
+    summary_lines = []
+    parameter_descriptions = {}
+
+    for line in lines:
+        match = _FIELD_RE.match(line)
+
         if match:
-            field, name, text = match.groups()
-            if field == "param" and name:
-                current_param = name
-                param_descriptions[name] = text.strip()
-            else:
-                current_param = None
-        elif current_param:
-            param_descriptions[current_param] += " " + stripped
-    return summary, param_descriptions
+            parameter_name = match.group(1)
+            description = match.group(3)
+
+            parameter_descriptions[parameter_name] = description
+        elif line:
+            summary_lines.append(line)
+
+    summary = " ".join(summary_lines)
+
+    return summary, parameter_descriptions
+
+
+def _python_type_to_json_schema(annotation):
+    """
+    Convert a Python type annotation into a JSON schema.
+    """
+
+    origin = get_origin(annotation)
+
+    # Handles:
+    #   str | None
+    #   int | None
+    #   Optional[str]
+    #   Optional[int]
+    if origin in (UnionType, Union):
+        args = get_args(annotation)
+
+        if type(None) in args:
+            non_none_types = [
+                arg
+                for arg in args
+                if arg is not type(None)
+            ]
+
+            if len(non_none_types) == 1:
+                actual_type = non_none_types[0]
+
+                json_type = _PYTHON_TO_JSON_TYPE.get(
+                    actual_type,
+                    "string",
+                )
+
+                return {
+                    "type": [json_type, "null"]
+                }
+
+    # Normal types:
+    #   str
+    #   int
+    #   float
+    #   bool
+    #   dict
+    return {
+        "type": _PYTHON_TO_JSON_TYPE.get(
+            annotation,
+            "string",
+        )
+    }
 
 
 def llm_tool():
-    """Register a function as an LLM-callable tool."""
+    """
+    Decorator used to register a Python function as an LLM tool.
+
+    The decorated function must have `session` as its first
+    parameter. `session` is internal application state and is
+    therefore excluded from the LLM-facing tool schema.
+    """
 
     def decorator(func):
-        sig = inspect.signature(func)
-        hints = get_type_hints(func)
-        summary, param_docs = _parse_docstring(inspect.getdoc(func))
+        signature = inspect.signature(func)
+
+        type_hints = get_type_hints(func)
+
+        summary, parameter_descriptions = _parse_docstring(
+            func.__doc__
+        )
+
         properties = {}
         required = []
-        for param in sig.parameters.values():
-            # session is injected by our application,
-            # so the LLM never sees it.
-            if param.name == "session":
+
+        for parameter_name, parameter in signature.parameters.items():
+
+            # session is internal application state.
+            # The LLM must never see or provide it.
+            if parameter_name == "session":
                 continue
-            py_type = hints.get(param.name, str)
-            if get_origin(py_type) is list:
-                args = get_args(py_type)
-                item_type = args[0] if args else str
-                schema = {
-                    "type": "array",
-                    "items": {
-                        "type": _PYTHON_TO_JSON_TYPE.get(
-                            item_type,
-                            "string"
-                        )
-                    }
-                }
 
-            else:
-                args = [a for a in get_args(py_type) if a is not type(None)]
-                base_type = args[0] if args else py_type
-                schema = {"type": _PYTHON_TO_JSON_TYPE.get(base_type, "string")}
+            annotation = type_hints.get(
+                parameter_name,
+                str,
+            )
 
-            if param.name in param_docs:
-                schema["description"] = param_docs[param.name]
-            properties[param.name] = schema
-            if param.default is inspect.Parameter.empty:
-                required.append(param.name)
+            parameter_schema = _python_type_to_json_schema(
+                annotation
+            )
+
+            description = parameter_descriptions.get(
+                parameter_name
+            )
+
+            if description:
+                parameter_schema["description"] = description
+
+            properties[parameter_name] = parameter_schema
+
+            # Parameters without a default value are required.
+            if parameter.default is inspect.Parameter.empty:
+                required.append(parameter_name)
 
         parameters_schema = {
             "type": "object",
             "properties": properties,
-            "required": required,
         }
+
+        if required:
+            parameters_schema["required"] = required
 
         _TOOL_REGISTRY[func.__name__] = {
             "schema": {
@@ -102,19 +178,51 @@ def llm_tool():
             },
             "func": func,
         }
+
         return func
+
     return decorator
 
 
 def get_tool_definitions() -> list[dict]:
-    return [entry["schema"] for entry in _TOOL_REGISTRY.values()]
+    """
+    Return all registered tools in LLM-compatible format.
+    """
+
+    return [
+        entry["schema"]
+        for entry in _TOOL_REGISTRY.values()
+    ]
 
 
-def call_tool(name: str, session: dict, arguments: dict) -> dict:
+def call_tool(
+    name: str,
+    session: dict,
+    arguments: dict,
+) -> dict:
+    """
+    Execute a registered tool.
+
+    The session is supplied by the application and is never
+    controlled by the LLM.
+    """
 
     entry = _TOOL_REGISTRY.get(name)
 
     if entry is None:
-        return {"status": "error", "message": f"Unknown tool '{name}'."}
+        return {
+            "status": "error",
+            "message": f"Unknown tool: {name}",
+        }
 
-    return entry["func"](session, **arguments)
+    try:
+        return entry["func"](
+            session,
+            **arguments,
+        )
+
+    except Exception as error:
+        return {
+            "status": "error",
+            "message": str(error),
+        }

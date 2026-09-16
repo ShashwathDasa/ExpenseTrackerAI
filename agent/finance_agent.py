@@ -1,7 +1,9 @@
 import json
-
+from datetime import date
+import agent.tools
 from groq import Groq
 
+from agent.system_prompt import get_system_prompt
 from config import Config
 from agent.tool_registry import get_tool_definitions, call_tool
 
@@ -14,18 +16,14 @@ class FinanceAgent:
         self.model = "openai/gpt-oss-120b"
 
     def respond(self, user_message):
+        today = date.today().isoformat()
+
+        system_prompt = get_system_prompt(today)
+
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "You are a personal finance assistant. "
-                    "Use the available tools to answer questions about "
-                    "the user's financial data. "
-                    "All financial amounts are in Indian Rupees (INR). "
-                    "Always display monetary amounts using the ₹ symbol. "
-                    "Do not convert amounts to another currency. "
-                    "Do not invent financial figures."
-                ),
+                "content": system_prompt,
             },
             {
                 "role": "user",
@@ -33,29 +31,51 @@ class FinanceAgent:
             },
         ]
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            tools=get_tool_definitions(),
-            tool_choice="auto",
-        )
+        while True:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=get_tool_definitions(),
+                tool_choice="auto",
+            )
 
-        message = response.choices[0].message
-        if not message.tool_calls:
-            return message.content
-        messages.append(message)
+            message = response.choices[0].message
 
-        for tool_call in message.tool_calls:
-            tool_name = tool_call.function.name
-            arguments = json.loads(tool_call.function.arguments)
-            result = call_tool(tool_name, self.session, arguments)
-            messages.append(
-                {
+            if not message.tool_calls:
+                return message.content
+
+            messages.append({
+                "role": "assistant",
+                "content": message.content,
+                "tool_calls": [
+                    {
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_call.function.name,
+                            "arguments": tool_call.function.arguments,
+                        },
+                    }
+                    for tool_call in message.tool_calls
+                ],
+            })
+
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.function.name
+
+                arguments = json.loads(
+                    tool_call.function.arguments
+                )
+
+                result = call_tool(
+                    tool_name,
+                    self.session,
+                    arguments,
+                )
+
+                messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
                     "name": tool_name,
                     "content": json.dumps(result),
-                }
-            )
-        final_response = self.client.chat.completions.create(model=self.model, messages=messages)
-        return final_response.choices[0].message.content
+                })

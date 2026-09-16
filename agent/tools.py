@@ -2,21 +2,332 @@ from agent.tool_registry import llm_tool
 
 
 @llm_tool()
-def get_total_expenses(session, start_date: str | None = None, end_date: str | None = None):
+def get_total_expenses(
+    session,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    username: str | None = None,
+):
     """
-    Calculate the total amount of expenses for the authenticated user.
+    Calculate the total amount of expenses for a user.
 
-    If a date range is provided, only expenses within that range are included.
-    If no date range is provided, all available expenses are included.
+    Use this tool whenever the user asks about:
+    - total spending
+    - total expenses
+    - how much they spent
+    - spending over a specific period
+    - spending this month
+    - spending last month
+    - spending between two dates
+
+    If a username is provided, calculate expenses for that user.
+    If no username is provided, use the authenticated user's data.
 
     :param start_date: Optional start date, inclusive, in YYYY-MM-DD format.
     :param end_date: Optional end date, inclusive, in YYYY-MM-DD format.
+    :param username: Optional username to query. If omitted, use the authenticated user.
     """
 
+    user_service = session["user_service"]
     transaction_service = session["transaction_service"]
-    user = session["user"]
+
+    user = user_service.resolve_user(
+        session["user"],
+        username,
+    )
+
     transactions = transaction_service.get_transactions(user)
-    expenses = transaction_service.filter_transactions(transactions, transaction_type="Expense", start_date=start_date,
-        end_date=end_date)
+
+    expenses = transaction_service.filter_transactions(
+        transactions,
+        transaction_type="Expense",
+        start_date=start_date,
+        end_date=end_date,
+    )
+
     total = transaction_service.get_total(expenses)
-    return {"status": "success","total": total}
+
+    return {
+        "status": "success",
+        "type": "total_expenses",
+        "username": user["username"],
+        "start_date": start_date,
+        "end_date": end_date,
+        "total": total,
+    }
+
+
+@llm_tool()
+def get_category_summary(
+    session,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    category: str | None = None,
+    username: str | None = None,
+):
+    """
+    Summarize a user's expenses by category.
+
+    Use this tool when the user asks:
+    - where they spent their money
+    - how much they spent in each category
+    - for a breakdown of their expenses by category
+    - how much they spent on a specific category
+
+    Only transactions with Type = Expense are included.
+
+    If a username is provided, calculate the summary for that user.
+    If no username is provided, use the authenticated user's data.
+
+    :param start_date: Optional start date, inclusive, in YYYY-MM-DD format.
+    :param end_date: Optional end date, inclusive, in YYYY-MM-DD format.
+    :param category: Optional expense category such as Food, Travel, or Shopping.
+    :param username: Optional username to query. If omitted, use the authenticated user.
+    """
+
+    user_service = session["user_service"]
+    transaction_service = session["transaction_service"]
+
+    user = user_service.resolve_user(
+        session["user"],
+        username,
+    )
+
+    transactions = transaction_service.get_transactions(user)
+
+    expenses = transaction_service.filter_transactions(
+        transactions,
+        transaction_type="Expense",
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    if category:
+        expenses = [
+            transaction
+            for transaction in expenses
+            if transaction["Category"].lower() == category.lower()
+        ]
+
+    summary = transaction_service.get_category_summary(
+        expenses
+    )
+
+    total = transaction_service.get_total(
+        expenses
+    )
+
+    return {
+        "status": "success",
+        "type": "category_summary",
+        "username": user["username"],
+        "start_date": start_date,
+        "end_date": end_date,
+        "category": category,
+        "summary": summary,
+        "total": total,
+    }
+
+
+@llm_tool()
+def compare_expenses(
+    session,
+    period_1_start: str,
+    period_1_end: str,
+    period_2_start: str,
+    period_2_end: str,
+    username: str | None = None,
+):
+    """
+    Compare total expenses between two time periods for a user.
+
+    Use this tool when the user asks to compare spending or expenses
+    between two different time periods.
+
+    The first requested period is period 1.
+    The second requested period is period 2.
+
+    Only transactions with Type = Expense are included.
+
+    If a username is provided, calculate the comparison for that user.
+    If no username is provided, use the authenticated user's data.
+
+    :param period_1_start: Start date of the first period, inclusive, in YYYY-MM-DD format.
+    :param period_1_end: End date of the first period, inclusive, in YYYY-MM-DD format.
+    :param period_2_start: Start date of the second period, inclusive, in YYYY-MM-DD format.
+    :param period_2_end: End date of the second period, inclusive, in YYYY-MM-DD format.
+    :param username: Optional username to query. If omitted, use the authenticated user.
+    """
+
+    user_service = session["user_service"]
+    transaction_service = session["transaction_service"]
+
+    user = user_service.resolve_user(
+        session["user"],
+        username,
+    )
+
+    transactions = transaction_service.get_transactions(user)
+
+    period_1_transactions = transaction_service.filter_transactions(
+        transactions,
+        transaction_type="Expense",
+        start_date=period_1_start,
+        end_date=period_1_end,
+    )
+
+    period_2_transactions = transaction_service.filter_transactions(
+        transactions,
+        transaction_type="Expense",
+        start_date=period_2_start,
+        end_date=period_2_end,
+    )
+
+    period_1_total = transaction_service.get_total(
+        period_1_transactions
+    )
+
+    period_2_total = transaction_service.get_total(
+        period_2_transactions
+    )
+
+    difference = period_2_total - period_1_total
+
+    if period_1_total == 0:
+        percentage_change = None
+    else:
+        percentage_change = (
+            difference / period_1_total
+        ) * 100
+
+    return {
+        "status": "success",
+        "type": "expense_comparison",
+        "username": user["username"],
+        "period_1": {
+            "start_date": period_1_start,
+            "end_date": period_1_end,
+            "total": period_1_total,
+        },
+        "period_2": {
+            "start_date": period_2_start,
+            "end_date": period_2_end,
+            "total": period_2_total,
+        },
+        "difference": difference,
+        "percentage_change": percentage_change,
+    }
+
+
+@llm_tool()
+def compare_category_expenses(
+    session,
+    period_1_start: str,
+    period_1_end: str,
+    period_2_start: str,
+    period_2_end: str,
+    username: str | None = None,
+):
+    """
+    Compare category-wise expenses between two time periods for a user.
+
+    Use this tool when the user asks to compare category-wise spending
+    between two different time periods.
+
+    The first requested period is period 1.
+    The second requested period is period 2.
+
+    Only transactions with Type = Expense are included.
+
+    If a username is provided, calculate the comparison for that user.
+    If no username is provided, use the authenticated user's data.
+
+    :param period_1_start: Start date of the first period, inclusive, in YYYY-MM-DD format.
+    :param period_1_end: End date of the first period, inclusive, in YYYY-MM-DD format.
+    :param period_2_start: Start date of the second period, inclusive, in YYYY-MM-DD format.
+    :param period_2_end: End date of the second period, inclusive, in YYYY-MM-DD format.
+    :param username: Optional username to query. If omitted, use the authenticated user.
+    """
+
+    user_service = session["user_service"]
+    transaction_service = session["transaction_service"]
+
+    user = user_service.resolve_user(
+        session["user"],
+        username,
+    )
+
+    transactions = transaction_service.get_transactions(user)
+
+    period_1_transactions = transaction_service.filter_transactions(
+        transactions,
+        transaction_type="Expense",
+        start_date=period_1_start,
+        end_date=period_1_end,
+    )
+
+    period_2_transactions = transaction_service.filter_transactions(
+        transactions,
+        transaction_type="Expense",
+        start_date=period_2_start,
+        end_date=period_2_end,
+    )
+
+    period_1_summary = transaction_service.get_category_summary(
+        period_1_transactions
+    )
+
+    period_2_summary = transaction_service.get_category_summary(
+        period_2_transactions
+    )
+
+    period_1_total = transaction_service.get_total(
+        period_1_transactions
+    )
+
+    period_2_total = transaction_service.get_total(
+        period_2_transactions
+    )
+
+    categories = set(period_1_summary) | set(period_2_summary)
+
+    category_comparison = {}
+
+    for category in categories:
+        amount_1 = period_1_summary.get(category, 0)
+        amount_2 = period_2_summary.get(category, 0)
+
+        difference = amount_2 - amount_1
+
+        if amount_1 == 0:
+            percentage_change = None
+        else:
+            percentage_change = (
+                difference / amount_1
+            ) * 100
+
+        category_comparison[category] = {
+            "period_1": amount_1,
+            "period_2": amount_2,
+            "difference": difference,
+            "percentage_change": percentage_change,
+        }
+
+    return {
+        "status": "success",
+        "type": "category_expense_comparison",
+        "username": user["username"],
+        "period_1": {
+            "start_date": period_1_start,
+            "end_date": period_1_end,
+            "total": period_1_total,
+            "categories": period_1_summary,
+        },
+        "period_2": {
+            "start_date": period_2_start,
+            "end_date": period_2_end,
+            "total": period_2_total,
+            "categories": period_2_summary,
+        },
+        "category_comparison": category_comparison,
+    }
