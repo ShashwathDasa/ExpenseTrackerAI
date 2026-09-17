@@ -15,21 +15,15 @@ class FinanceAgent:
         self.client = Groq(api_key=Config.GROQ_API_KEY)
         self.model = "openai/gpt-oss-120b"
 
-    def respond(self, user_message):
+    def respond(self, user_message, history=None):
         today = date.today().isoformat()
-
         system_prompt = get_system_prompt(today)
+        messages = [{"role": "system", "content": system_prompt}]
 
-        messages = [
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": user_message,
-            },
-        ]
+        if history:
+            messages.extend(history)
+
+        messages.append({"role": "user", "content": user_message})
 
         while True:
             response = self.client.chat.completions.create(
@@ -40,9 +34,9 @@ class FinanceAgent:
             )
 
             message = response.choices[0].message
-
             if not message.tool_calls:
-                return message.content
+                messages.append({"role": "assistant", "content": message.content})
+                return message.content, messages[1:]
 
             messages.append({
                 "role": "assistant",
@@ -59,23 +53,11 @@ class FinanceAgent:
                     for tool_call in message.tool_calls
                 ],
             })
-
             for tool_call in message.tool_calls:
                 tool_name = tool_call.function.name
+                arguments = json.loads(tool_call.function.arguments)
 
-                arguments = json.loads(
-                    tool_call.function.arguments
-                )
+                result = call_tool(tool_name, self.session, arguments)
 
-                result = call_tool(
-                    tool_name,
-                    self.session,
-                    arguments,
-                )
-
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "name": tool_name,
-                    "content": json.dumps(result),
-                })
+                messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": tool_name,
+                                 "content": json.dumps(result)})

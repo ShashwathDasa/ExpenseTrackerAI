@@ -1,0 +1,42 @@
+{
+  "chat_id": 6571180313,
+  "last_updated": "2026-09-17T17:53:22.085135",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hi"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello! 👋 I’m here to help you with your finances. Let me know what you’d like to explore—spending totals, category breakdowns, comparisons, or anything else."
+    },
+    {
+      "role": "user",
+      "content": "What is the current month's spends?"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "fc_5c6f4c2d-921f-44e3-9a45-174ec27097d2",
+          "type": "function",
+          "function": {
+            "name": "get_total_expenses",
+            "arguments": "{\"end_date\":\"2026-09-30\",\"start_date\":\"2026-09-01\",\"username\":null}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "fc_5c6f4c2d-921f-44e3-9a45-174ec27097d2",
+      "name": "get_total_expenses",
+      "content": "{\"status\": \"success\", \"type\": \"total_expenses\", \"username\": \"ShashwathDasa\", \"start_date\": \"2026-09-01\", \"end_date\": \"2026-09-30\", \"total\": 41630.39}"
+    },
+    {
+      "role": "assistant",
+      "content": "📊 **Spending for September 2026 (current month)**  \n\n- **Total expenses:** ₹ 41,630.39  \n\nLet me know if you’d like a category breakdown, a comparison with another month, or any other details!"
+    }
+  ]
+}

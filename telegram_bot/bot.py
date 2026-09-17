@@ -3,12 +3,14 @@ from telegram.ext import ContextTypes, Application, CommandHandler, MessageHandl
 
 from agent.finance_agent import FinanceAgent
 from config import Config
+from conversation.store import ConversationStore
 
 
 class TelegramBot:
     def __init__(self, user_service, transaction_service):
         self.user_service = user_service
         self.transaction_service = transaction_service
+        self.conversation_store = ConversationStore()
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
@@ -32,8 +34,10 @@ class TelegramBot:
             "user_service": self.user_service,
             "transaction_service": self.transaction_service,
         }
+        history = self.conversation_store.get_history(chat_id)
         agent = FinanceAgent(session)
-        response = agent.respond(message)
+        response, updated_history = agent.respond(message, history)
+        self.conversation_store.save_history(chat_id, updated_history)
         await update.message.reply_text(response)
 
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
