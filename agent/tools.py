@@ -2,12 +2,8 @@ from agent.tool_registry import llm_tool
 
 
 @llm_tool()
-def get_total_expenses(
-    session,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    username: str | None = None,
-):
+def get_total_expenses(session, start_date: str | None = None, end_date: str | None = None,
+                       username: str | None = None):
     """
     Calculate the total amount of expenses for a user.
 
@@ -31,22 +27,11 @@ def get_total_expenses(
     user_service = session["user_service"]
     transaction_service = session["transaction_service"]
 
-    user = user_service.resolve_user(
-        session["user"],
-        username,
-    )
-
+    user = user_service.resolve_user(session["user"], username)
     transactions = transaction_service.get_transactions(user)
-
-    expenses = transaction_service.filter_transactions(
-        transactions,
-        transaction_type="Expense",
-        start_date=start_date,
-        end_date=end_date,
-    )
-
+    expenses = transaction_service.filter_transactions(transactions, transaction_type="Expense",
+                                                       start_date=start_date, end_date=end_date)
     total = transaction_service.get_total(expenses)
-
     return {
         "status": "success",
         "type": "total_expenses",
@@ -58,13 +43,8 @@ def get_total_expenses(
 
 
 @llm_tool()
-def get_category_summary(
-    session,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    category: str | None = None,
-    username: str | None = None,
-):
+def get_category_summary(session, start_date: str | None = None, end_date: str | None = None,
+                         category: str | None = None, username: str | None = None):
     """
     Summarize a user's expenses by category.
 
@@ -87,35 +67,14 @@ def get_category_summary(
 
     user_service = session["user_service"]
     transaction_service = session["transaction_service"]
-
-    user = user_service.resolve_user(
-        session["user"],
-        username,
-    )
-
+    user = user_service.resolve_user(session["user"], username)
     transactions = transaction_service.get_transactions(user)
-
-    expenses = transaction_service.filter_transactions(
-        transactions,
-        transaction_type="Expense",
-        start_date=start_date,
-        end_date=end_date,
-    )
-
+    expenses = transaction_service.filter_transactions(transactions, transaction_type="Expense", start_date=start_date,
+                                                       end_date=end_date)
     if category:
-        expenses = [
-            transaction
-            for transaction in expenses
-            if transaction["Category"].lower() == category.lower()
-        ]
-
-    summary = transaction_service.get_category_summary(
-        expenses
-    )
-
-    total = transaction_service.get_total(
-        expenses
-    )
+        expenses = [transaction for transaction in expenses if transaction["Category"].lower() == category.lower()]
+    summary = transaction_service.get_category_summary(expenses)
+    total = transaction_service.get_total(expenses)
 
     return {
         "status": "success",
@@ -130,14 +89,8 @@ def get_category_summary(
 
 
 @llm_tool()
-def compare_expenses(
-    session,
-    period_1_start: str,
-    period_1_end: str,
-    period_2_start: str,
-    period_2_end: str,
-    username: str | None = None,
-):
+def compare_expenses(session, period_1_start: str, period_1_end: str, period_2_start: str, period_2_end: str,
+                     username: str | None = None, ):
     """
     Compare total expenses between two time periods for a user.
 
@@ -161,44 +114,19 @@ def compare_expenses(
 
     user_service = session["user_service"]
     transaction_service = session["transaction_service"]
-
-    user = user_service.resolve_user(
-        session["user"],
-        username,
-    )
-
+    user = user_service.resolve_user(session["user"], username)
     transactions = transaction_service.get_transactions(user)
-
-    period_1_transactions = transaction_service.filter_transactions(
-        transactions,
-        transaction_type="Expense",
-        start_date=period_1_start,
-        end_date=period_1_end,
-    )
-
-    period_2_transactions = transaction_service.filter_transactions(
-        transactions,
-        transaction_type="Expense",
-        start_date=period_2_start,
-        end_date=period_2_end,
-    )
-
-    period_1_total = transaction_service.get_total(
-        period_1_transactions
-    )
-
-    period_2_total = transaction_service.get_total(
-        period_2_transactions
-    )
-
+    period_1_transactions = transaction_service.filter_transactions(transactions, transaction_type="Expense",
+                                                                    start_date=period_1_start, end_date=period_1_end)
+    period_2_transactions = transaction_service.filter_transactions(transactions, transaction_type="Expense",
+                                                                    start_date=period_2_start, end_date=period_2_end)
+    period_1_total = transaction_service.get_total(period_1_transactions)
+    period_2_total = transaction_service.get_total(period_2_transactions)
     difference = period_2_total - period_1_total
-
     if period_1_total == 0:
         percentage_change = None
     else:
-        percentage_change = (
-            difference / period_1_total
-        ) * 100
+        percentage_change = (difference / period_1_total) * 100
 
     return {
         "status": "success",
@@ -220,14 +148,8 @@ def compare_expenses(
 
 
 @llm_tool()
-def compare_category_expenses(
-    session,
-    period_1_start: str,
-    period_1_end: str,
-    period_2_start: str,
-    period_2_end: str,
-    username: str | None = None,
-):
+def compare_category_expenses(session, period_1_start: str, period_1_end: str, period_2_start: str, period_2_end: str,
+                              username: str | None = None):
     """
     Compare category-wise expenses between two time periods for a user.
 
@@ -251,60 +173,27 @@ def compare_category_expenses(
 
     user_service = session["user_service"]
     transaction_service = session["transaction_service"]
-
-    user = user_service.resolve_user(
-        session["user"],
-        username,
-    )
-
+    user = user_service.resolve_user(session["user"], username)
     transactions = transaction_service.get_transactions(user)
-
-    period_1_transactions = transaction_service.filter_transactions(
-        transactions,
-        transaction_type="Expense",
-        start_date=period_1_start,
-        end_date=period_1_end,
-    )
-
-    period_2_transactions = transaction_service.filter_transactions(
-        transactions,
-        transaction_type="Expense",
-        start_date=period_2_start,
-        end_date=period_2_end,
-    )
-
-    period_1_summary = transaction_service.get_category_summary(
-        period_1_transactions
-    )
-
-    period_2_summary = transaction_service.get_category_summary(
-        period_2_transactions
-    )
-
-    period_1_total = transaction_service.get_total(
-        period_1_transactions
-    )
-
-    period_2_total = transaction_service.get_total(
-        period_2_transactions
-    )
-
+    period_1_transactions = transaction_service.filter_transactions(transactions, transaction_type="Expense",
+                                                                    start_date=period_1_start, end_date=period_1_end)
+    period_2_transactions = transaction_service.filter_transactions(transactions, transaction_type="Expense",
+                                                                    start_date=period_2_start, end_date=period_2_end)
+    period_1_summary = transaction_service.get_category_summary(period_1_transactions)
+    period_2_summary = transaction_service.get_category_summary(period_2_transactions)
+    period_1_total = transaction_service.get_total(period_1_transactions)
+    period_2_total = transaction_service.get_total(period_2_transactions)
     categories = set(period_1_summary) | set(period_2_summary)
 
     category_comparison = {}
-
     for category in categories:
         amount_1 = period_1_summary.get(category, 0)
         amount_2 = period_2_summary.get(category, 0)
-
         difference = amount_2 - amount_1
-
         if amount_1 == 0:
             percentage_change = None
         else:
-            percentage_change = (
-                difference / amount_1
-            ) * 100
+            percentage_change = (difference / amount_1) * 100
 
         category_comparison[category] = {
             "period_1": amount_1,
@@ -330,4 +219,37 @@ def compare_category_expenses(
             "categories": period_2_summary,
         },
         "category_comparison": category_comparison,
+    }
+
+
+@llm_tool()
+def extract_transaction(session, transaction_type: str, amount: float, reason: str | None = None,
+                        category: str | None = None, from_account: str | None = None, to_account: str | None = None,
+                        transaction_date: str | None = None):
+    """
+    Extract a transaction draft from the user's message.
+
+    This tool ONLY extracts transaction information and creates a draft.
+    It DOES NOT save, record, submit, or write anything to Google Sheets.
+
+    :transaction_type: Transaction type: Expense, Income, Transfer, or Investment.
+    :amount: Transaction amount in INR.
+    :reason: Short description or reason for the transaction.
+    :category: Category explicitly provided by the user, otherwise null.
+    :from_account: Source account explicitly provided by the user, otherwise null.
+    :to_account: Destination account explicitly provided by the user, otherwise null.
+    :transaction_date: Transaction date in YYYY-MM-DD format if explicitly provided or implied by the user, otherwise null.
+    """
+
+    return {
+        "status": "success",
+        "transaction": {
+            "type": transaction_type,
+            "amount": amount,
+            "reason": reason,
+            "category": category,
+            "from_account": from_account,
+            "to_account": to_account,
+            "transaction_date": transaction_date,
+        },
     }

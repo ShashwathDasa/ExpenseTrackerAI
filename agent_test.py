@@ -35,6 +35,6 @@
 # print(user_service.get_user_by_username("Uha"))
 # print(user_service.get_user_by_username("ShashwathDasa"))
 
-from agent.formatter import format_currency
-
-print(format_currency(28834.30))
+# from agent.formatter import format_currency
+#
+# print(format_currency(28834.30))

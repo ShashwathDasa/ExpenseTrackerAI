@@ -2,15 +2,14 @@ from datetime import datetime
 
 
 def parse_date(value):
-    formats = [
-        "%d-%b-%Y",  # Google Sheets: 6-Sep-2026
-        "%Y-%m-%d",  # Tool/API: 2026-09-06
-    ]
+    formats = ["%d-%b-%Y", "%Y-%m-%d", "%d/%m/%Y", "%d/%m"]
 
     for date_format in formats:
         try:
-            return datetime.strptime(value, date_format)
+            parsed_date = datetime.strptime(value, date_format)
+            if date_format == "%d/%m":
+                parsed_date = parsed_date.replace(year=datetime.today().year)
+            return parsed_date
         except ValueError:
             continue
-
     raise ValueError(f"Unsupported date format: {value}")

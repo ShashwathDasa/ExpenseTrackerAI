@@ -9,7 +9,6 @@ from agent.tool_registry import get_tool_definitions, call_tool
 
 
 class FinanceAgent:
-
     def __init__(self, session):
         self.session = session
         self.client = Groq(api_key=Config.GROQ_API_KEY)
@@ -24,7 +23,7 @@ class FinanceAgent:
             messages.extend(history)
 
         messages.append({"role": "user", "content": user_message})
-
+        transaction_draft = None
         while True:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -36,7 +35,7 @@ class FinanceAgent:
             message = response.choices[0].message
             if not message.tool_calls:
                 messages.append({"role": "assistant", "content": message.content})
-                return message.content, messages[1:]
+                return message.content, messages[1:], transaction_draft
 
             messages.append({
                 "role": "assistant",
@@ -59,5 +58,14 @@ class FinanceAgent:
 
                 result = call_tool(tool_name, self.session, arguments)
 
-                messages.append({"role": "tool", "tool_call_id": tool_call.id, "name": tool_name,
-                                 "content": json.dumps(result)})
+                if tool_name == "extract_transaction":
+                    transaction_draft = result.get("transaction")
+                    return None,  messages[1:], transaction_draft,
+
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": tool_name,
+                    "content": json.dumps(result),
+                })
